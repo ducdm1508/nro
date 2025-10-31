@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Animation System</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .character-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .character {
+            width: 100px;
+            height: 100px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: transform 0.1s ease;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        button.active {
+            background: #4CAF50;
+        }
+        
+        .info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            color: white;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            max-width: 400px;
+        }
+        
+        .frame-indicator {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .frame-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        
+        .frame-dot.active {
+            background: #4CAF50;
+            transform: scale(1.2);
+        }
+        
+        .position-display {
+            margin-top: 10px;
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 style="color: white; text-align: center; margin-bottom: 30px;">Character Animation System</h1>
+        
+        <div class="character-container">
+            <div class="character" id="character"></div>
+        </div>
+        
+        <div class="frame-indicator" id="frameIndicator">
+            <div class="frame-dot"></div>
+            <div class="frame-dot"></div>
+            <div class="frame-dot"></div>
+            <div class="frame-dot"></div>
+            <div class="frame-dot"></div>
+            <div class="frame-dot"></div>
+        </div>
+        
+        <div class="controls">
+            <button id="idleBtn">Idle Animation</button>
+            <button id="moveBtn">Move Animation</button>
+            <button id="stopBtn">Stop</button>
+            <button id="resolutionBtn">Toggle Hi-Res</button>
+        </div>
+        
+        <div class="info">
+            <div><strong>Current State:</strong> <span id="currentState">Stopped</span></div>
+            <div><strong>Current Frame:</strong> <span id="currentFrame">0</span></div>
+            <div class="position-display">
+                Position: [<span id="positionDisplay">0, 0, 0</span>]
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class CharacterAnimation {
+            constructor() {
+                // Mỗi part có 6 frame - 3 idle + 3 move
+                this.frames = {
+                    idle: [
+                        { image: 1, position: [16754, 0, -12] },  // Frame 1 - Idle 1
+                        { image: 2, position: [16757, 0, -12] },  // Frame 2 - Idle 2
+                        { image: 3, position: [16, 0, 0] }        // Frame 3 - Idle 3
+                    ],
+                    move: [
+                        { image: 4, position: [16754, 0, -12] },  // Frame 4 - Move 1
+                        { image: 5, position: [16757, 0, -12] },  // Frame 5 - Move 2
+                        { image: 6, position: [16, 0, 0] }        // Frame 6 - Move 3
+                    ]
+                };
+                
+                this.currentAnimation = null;
+                this.currentFrame = 0;
+                this.animationSpeed = 200; // ms per frame
+                this.animationInterval = null;
+                this.useHighRes = true; // Default to high resolution
+                
+                this.character = document.getElementById('character');
+                this.frameIndicator = document.getElementById('frameIndicator');
+                this.currentStateEl = document.getElementById('currentState');
+                this.currentFrameEl = document.getElementById('currentFrame');
+                this.positionDisplay = document.getElementById('positionDisplay');
+                
+                this.setupControls();
+                this.loadImages();
+            }
+            
+            // Method để load part data từ server/database với option cho resolution
+            async loadPartData(partId, useHighRes = true) {
+                try {
+                    // Giả sử bạn có API endpoint để lấy part data
+                    const response = await fetch(`/api/part/${partId}`);
+                    const partData = await response.json();
+                    
+                    // Update frames với iconId thật từ database
+                    this.frames = {
+                        idle: [],
+                        move: []
+                    };
+                    
+                    // Choose icon path based on resolution preference
+                    const iconBasePath = useHighRes ? 'data/icon/x2/' : 'data/icon/';
+                    
+                    // Giả sử partData.details chứa array PartDetail
+                    partData.details.forEach((detail, index) => {
+                        const frameData = {
+                            iconId: detail.iconId,
+                            dx: detail.dx,
+                            dy: detail.dy,
+                            imagePath: iconBasePath + detail.iconId + '.png'
+                        };
+                        
+                        // 3 frame đầu là idle, 3 frame sau là move
+                        if (index < 3) {
+                            this.frames.idle.push(frameData);
+                        } else {
+                            this.frames.move.push(frameData);
+                        }
+                    });
+                    
+                    // Update imageUrls array
+                    this.imageUrls = partData.details.map(detail => 
+                        iconBasePath + detail.iconId + '.png'
+                    );
+                    
+                } catch (error) {
+                    console.error('Error loading part data:', error);
+                    // Fallback to placeholder images
+                    this.loadPlaceholderImages();
+                }
+            }
+            
+            // Fallback method nếu không load được real images
+            loadPlaceholderImages() {
+                this.imageUrls = [
+                    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iIzMzOTlmZiIvPjx0ZXh0IHg9IjUwIiB5PSI1NSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+Tm8gSW1hZ2U8L3RleHQ+PC9zdmc+'
+                ];
+            }
+            
+            loadImages() {
+                // Sử dụng icon từ thư mục x2 (high resolution) hoặc thường
+                const iconBasePath = this.useHighRes ? 'data/icon/x2/' : 'data/icon/';
+                
+                // 6 frame images dựa trên iconId từ database
+                this.imageUrls = [
+                    // Idle frames (iconId từ database)
+                    iconBasePath + '16754.png',  // Frame 1 - Idle
+                    iconBasePath + '16757.png',  // Frame 2 - Idle
+                    iconBasePath + '16.png',     // Frame 3 - Idle
+                    // Move frames 
+                    iconBasePath + '16754.png',  // Frame 4 - Move (có thể khác)
+                    iconBasePath + '16757.png',  // Frame 5 - Move
+                    iconBasePath + '16.png'      // Frame 6 - Move
+                ];
+            }
+            
+            setupControls() {
+                document.getElementById('idleBtn').addEventListener('click', () => {
+                    this.startAnimation('idle');
+                });
+                
+                document.getElementById('moveBtn').addEventListener('click', () => {
+                    this.startAnimation('move');
+                });
+                
+                document.getElementById('stopBtn').addEventListener('click', () => {
+                    this.stopAnimation();
+                });
+                
+                document.getElementById('resolutionBtn').addEventListener('click', () => {
+                    this.toggleResolution();
+                });
+            }
+            
+            toggleResolution() {
+                this.useHighRes = !this.useHighRes;
+                const resBtn = document.getElementById('resolutionBtn');
+                resBtn.textContent = this.useHighRes ? 'Use Normal Res' : 'Use Hi-Res';
+                
+                // Reload images with new resolution
+                this.loadImages();
+                
+                // Update current display if animation is running
+                if (this.currentAnimation) {
+                    this.updateDisplay();
+                }
+            }
+            
+            startAnimation(type) {
+                this.stopAnimation();
+                this.currentAnimation = type;
+                this.currentFrame = 0;
+                
+                // Update UI
+                this.updateActiveButton(type);
+                this.currentStateEl.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                
+                // Start animation loop
+                this.animationInterval = setInterval(() => {
+                    this.nextFrame();
+                }, this.animationSpeed);
+                
+                // Show first frame immediately
+                this.updateDisplay();
+            }
+            
+            addIdlePulseEffect() {
+                // Add subtle pulse effect for idle animation
+                this.character.style.animation = 'pulse 2s ease-in-out infinite';
+            }
+            
+            nextFrame() {
+                if (!this.currentAnimation) return;
+                
+                const frames = this.frames[this.currentAnimation];
+                this.currentFrame = (this.currentFrame + 1) % frames.length;
+                this.updateDisplay();
+            }
+            
+            stopAnimation() {
+                if (this.animationInterval) {
+                    clearInterval(this.animationInterval);
+                    this.animationInterval = null;
+                }
+                this.currentAnimation = null;
+                this.currentStateEl.textContent = 'Stopped';
+                this.updateActiveButton(null);
+                this.updateFrameIndicator(-1);
+                this.character.style.animation = 'none';
+                this.character.style.transform = 'translateX(0px)';
+            }
+            
+            nextFrame() {
+                if (!this.currentAnimation) return;
+                
+                const frames = this.frames[this.currentAnimation];
+                this.currentFrame = (this.currentFrame + 1) % frames.length;
+                this.updateDisplay();
+            }
+            
+            updateDisplay() {
+                if (!this.currentAnimation) return;
+                
+                const frames = this.frames[this.currentAnimation];
+                const frame = frames[this.currentFrame];
+                
+                // Update character image
+                const imageIndex = frame.image - 1;
+                this.character.style.backgroundImage = `url(${this.imageUrls[imageIndex]})`;
+                
+                // Update position display
+                this.positionDisplay.textContent = frame.position.join(', ');
+                
+                // Calculate total frame index (0-5)
+                const totalFrameIndex = this.currentAnimation === 'idle' 
+                    ? this.currentFrame 
+                    : this.currentFrame + 3;
+                
+                // Update frame counter (1-based for display)
+                this.currentFrameEl.textContent = totalFrameIndex + 1;
+                
+                // Update frame indicator
+                this.updateFrameIndicator(totalFrameIndex);
+                
+                // Add movement effect for move animation
+                if (this.currentAnimation === 'move') {
+                    const offset = this.currentFrame * 5; // Slight movement between frames
+                    this.character.style.transform = `translateX(${offset}px)`;
+                    this.character.style.animation = 'none';
+                } else {
+                    this.character.style.transform = 'translateX(0px)';
+                    // Subtle breathing effect for idle
+                    this.character.style.animation = 'breathe 3s ease-in-out infinite';
+                }
+            }
+            
+            updateFrameIndicator(activeIndex) {
+                const dots = this.frameIndicator.querySelectorAll('.frame-dot');
+                dots.forEach((dot, index) => {
+                    dot.classList.toggle('active', index === activeIndex);
+                });
+            }
+            
+            updateActiveButton(activeType) {
+                document.querySelectorAll('button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                
+                if (activeType === 'idle') {
+                    document.getElementById('idleBtn').classList.add('active');
+                } else if (activeType === 'move') {
+                    document.getElementById('moveBtn').classList.add('active');
+                }
+            }
+        }
+        
+        // Initialize animation system when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new CharacterAnimation();
+        });
+    </script>
+</body>
+</html>
+
+[[16754, 0, -12], [16757, 0, -12], [16, 0, 0]]
+
+[[ 16754,  0,  0], [ 16756,  0,  0], [ 2955,  0,  0]]
+
+[[ 16760,  0,  0], [ 16761,  0,  0], [ 16762,  0,  0], [ 16763,  0,  0], [ 16764,  0,  0], [ 16765,  0,  0], [ 16766,  0,  0], [ 16767,  0,  0], [ 16768,  0,  0], [ 16769,  0,  0], [ 16770,  0,  0], [ 16771,  0,  0], [ 16772,  0,  0], [ 16773,  0,  0], [ 16774,  0,  0], [ 16775,  0,  0], [ 0,  0,  0]]
+
+[[ 16776,  0,  0], [ 16777,  0,  0], [ 16778,  0,  0], [ 16779,  0,  0], [ 16780,  0,  0], [ 16781,  0,  0], [ 16782,  0,  0], [ 16783,  0,  0], [ 16784,  0,  0], [ 16785,  0,  0], [ 16786,  0,  0], [ 16787,  0,  0], [ 16788,  0,  0], [ 0,  0,  0]]
+
+đầu
+else if (fusion != null && fusion.typeFusion != ConstPlayer.NON_FUSION) {
+    if (nPoint != null && nPoint.isGogeta) {
+        return 2100;
+    } else if (fusion.typeFusion == ConstPlayer.LUONG_LONG_NHAT_THE) {
+        return idOutfitFusion[this.gender == ConstPlayer.NAMEC ? 2 : 0][0];
+    } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA) {
+        if (this.pet.typePet == 1) {
+            return idOutfitFusion[3 + this.gender][0];
+        }
+        return idOutfitFusion[this.gender == ConstPlayer.NAMEC ? 2 : 1][0];
+    } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA2) {
+        return idOutfitFusion[6 + this.gender][0];
+    } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA3) {
+        return idOutfitFusion[9 + this.gender][0];
+    } else if (inventory.itemsBody.get(5).template.id == 1111
+            && this.pet.inventory.itemsBody.get(5).template.id == 1112) {
+        return idOutfitFusion[12 + this.gender][0];
+    }
+}
+thân
+else if (fusion != null && fusion.typeFusion != ConstPlayer.NON_FUSION) {
+    if (nPoint != null && nPoint.isGogeta) {
+        return 2101;
+    } else if (fusion.typeFusion == ConstPlayer.LUONG_LONG_NHAT_THE) {
+        return idOutfitFusion[this.gender == ConstPlayer.NAMEC ? 2 : 0][1];
+    } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA) {
+        if (this.pet.typePet == 1) {
+            return idOutfitFusion[3 + this.gender][1];
+        }
+        return idOutfitFusion[this.gender == ConstPlayer.NAMEC ? 2 : 1][1];
+    } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA2) {
+        return idOutfitFusion[6 + this.gender][1];
+    } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA3) {
+        return idOutfitFusion[9 + this.gender][1];
+    } else if (inventory.itemsBody.get(5).template.id == 1111
+            && this.pet.inventory.itemsBody.get(5).template.id == 1112) {
+        return idOutfitFusion[12 + this.gender][1];
+    }
+}
+
+chân
+else if (fusion != null && fusion.typeFusion != ConstPlayer.NON_FUSION) {
+            if (nPoint != null && nPoint.isGogeta) {
+                return 2102;
+            } else if (fusion.typeFusion == ConstPlayer.LUONG_LONG_NHAT_THE) {
+                return idOutfitFusion[this.gender == ConstPlayer.NAMEC ? 2 : 0][2];
+            } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA) {
+                if (this.pet.typePet == 1) {
+                    return idOutfitFusion[3 + this.gender][2];
+                }
+                return idOutfitFusion[this.gender == ConstPlayer.NAMEC ? 2 : 1][2];
+            } else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA2) {
+                return idOutfitFusion[6 + this.gender][2];
+            }else if (fusion.typeFusion == ConstPlayer.HOP_THE_PORATA3) {
+                return idOutfitFusion[9 + this.gender][2];
+            }else if (inventory.itemsBody.get(5).template.id == 1111 && this.pet.inventory.itemsBody.get(5).template.id == 1112) {
+                return idOutfitFusion[12 + this.gender][2];
+            }
+        }
